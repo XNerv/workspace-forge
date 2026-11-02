@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   generated-test:
-    name: The tool (generated/) on Ubuntu
+    name: generated/ · the tool
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -48,25 +48,25 @@ jobs:
           shellcheck --version | sed -n '2p'
           just --version
 
-      - name: Validate the justfile
+      - name: generated/ · Validate the justfile
         shell: bash
         run: |
           set -Eeuo pipefail
           just --list
 
-      - name: Lint the Bash sources
+      - name: generated/ · Lint the Bash sources
         shell: bash
         run: |
           set -Eeuo pipefail
           shellcheck forge lib/*.sh scripts/*.sh tests/*.sh
 
-      - name: Run the test suite
+      - name: generated/ · Run the test suite
         shell: bash
         run: |
           set -Eeuo pipefail
           bash tests/run.sh
 
-      - name: Validate the template tree
+      - name: generated/ · Validate the template tree
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -112,7 +112,7 @@ jobs:
             exit 1
           fi
 
-      - name: Validate generation in a temporary directory
+      - name: generated/ · Validate generation in a temporary directory
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -171,7 +171,7 @@ jobs:
             exit 1
           fi
 
-      - name: Verify that --dry-run writes nothing
+      - name: generated/ · Verify that --dry-run writes nothing
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -191,7 +191,7 @@ jobs:
             exit 1
           fi
 
-      - name: Refuse an existing destination
+      - name: generated/ · Refuse an existing destination
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -221,7 +221,7 @@ jobs:
           fi
 
   spec-audit:
-    name: Audit the specification wording
+    name: spec/ · the audit
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -230,7 +230,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Run the wording audit
+      - name: spec/ · Run the wording audit (from generated/)
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -239,7 +239,7 @@ jobs:
           bash ../spec/audit/run.sh
 
   root-lint:
-    name: Lint the host checks (root)
+    name: root/ · lint
     runs-on: ubuntu-latest
     timeout-minutes: 5
     defaults:
@@ -251,7 +251,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Run ShellCheck on doctor.sh, tests/ and spec/audit/
+      - name: root/ · Run ShellCheck on doctor.sh, tests/ and spec/audit/
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -259,7 +259,7 @@ jobs:
 
   root-test:
     # One job per file: a red job names the failing file without reading a log.
-    name: ${{ matrix.file }}
+    name: root/ · ${{ matrix.file }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -291,7 +291,7 @@ jobs:
           set -Eeuo pipefail
           sudo apt-get update -qq
 
-      - name: Run the file
+      - name: root/ · Run tests/${{ matrix.file }}
         shell: bash
         run: |
           set -Eeuo pipefail
