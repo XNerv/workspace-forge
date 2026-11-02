@@ -11,12 +11,15 @@ set -Eeuo pipefail
 dir=$(cd -P -- "$(dirname -- "$0")" && pwd)
 found=0
 failed=0
+failed_names=()
 
 while IFS= read -r t; do
   found=$((found + 1))
   printf '\n== %s\n' "${t#"$dir"/}"
   if ! bash "$t"; then
     failed=$((failed + 1))
+    failed_names+=("${t#"$dir"/}")
+    printf '\n-- %s failed\n' "${t#"$dir"/}" >&2
   fi
 done < <(find "$dir" -maxdepth 1 -type f -name 'test-*.sh' | LC_ALL=C sort)
 
@@ -26,5 +29,8 @@ if ((found == 0)); then
 fi
 
 printf '\n%d file(s), %d with failures\n' "$found" "$failed"
+if ((${#failed_names[@]})); then
+  printf 'failed: %s\n' "${failed_names[*]}"
+fi
 printf 'reports saved in %s\n' "${dir#"$PWD"/}/output"
 ((failed == 0))

@@ -238,10 +238,40 @@ jobs:
           # audit locates the repository from its own path.
           bash ../spec/audit/run.sh
 
+  root-lint:
+    name: Lint the host checks (root)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Run ShellCheck on doctor.sh, tests/ and spec/audit/
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          shellcheck doctor.sh tests/*.sh spec/audit/*.sh
+
   root-test:
-    name: This repository (root) on Ubuntu
+    # One job per file: a red job names the failing file without reading a log.
+    name: ${{ matrix.file }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        file:
+          - test-doctor.sh
+          - test-doctor-sections.sh
+          - test-doctor-services.sh
+          - test-doctor-systemd.sh
+          - test-doctor-units.sh
+          - test-just-recipes.sh
     # The workflow default is generated/; this suite lives at the root and
     # starts containers of its own, so it runs from there.
     defaults:
@@ -253,14 +283,16 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Lint the host checks
+      # test-doctor-sections.sh asks apt-cache about every package the catalogue
+      # names, so the index has to be current before the file runs.
+      - name: Refresh the package index
         shell: bash
         run: |
           set -Eeuo pipefail
-          shellcheck doctor.sh tests/*.sh spec/audit/*.sh
+          sudo apt-get update -qq
 
-      - name: Run the doctor test suite
+      - name: Run the file
         shell: bash
         run: |
           set -Eeuo pipefail
-          bash tests/run.sh
+          bash "tests/${{ matrix.file }}"

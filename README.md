@@ -218,7 +218,8 @@ bash tests/test-just-recipes.sh     # the justfile only delegates
 ```
 
 Every file reads as Given / When / Then and shares `tests/lib.sh`, which holds the assertions and the
-fixtures; a file sets up a host, runs the report once, and states what it must say.
+fixtures; a file sets up a host, runs the report once, and states what it must say. CI runs each file
+as its own job, so a failure names the file instead of hiding in one long log.
 
 The suite also runs in the image the repository ships, which carries the tools it calls:
 
