@@ -169,12 +169,12 @@ printf '\n  --- a group with no unit still speaks ---\n'
 # When:  the report draws the section
 # Then:  the empty groups say so, under their own name
 out=$(systemd_report FAKE_ACTIVE=inactive FAKE_SUB=dead)
-for group in Sockets Timers Containers; do
+for group in Sockets Paths Timers Containers; do
   check "$group is drawn with an empty note" \
     grep -qE "^ *[+\\]-- $group .*$" <<<"$out"
 done
 check 'the empty note appears once per empty group' \
-  test "$(grep -c 'no unit declared' <<<"$out")" -eq 3
+  test "$(grep -c 'no unit declared' <<<"$out")" -eq 4
 
 printf '\n  --- what reaches the summary ---\n'
 

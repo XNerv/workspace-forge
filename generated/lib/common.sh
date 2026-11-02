@@ -105,7 +105,7 @@ _abspath() {
   esac
 
   if command -v python3 > /dev/null 2>&1; then
-    resolved=$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' -- "$input" 2>/dev/null) || resolved=""
+    resolved=$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[2]))' -- "$input" 2>/dev/null) || resolved=""
   fi
   if [[ -z $resolved ]] && command -v realpath > /dev/null 2>&1; then
     resolved=$(realpath -m -- "$input" 2>/dev/null) || resolved=""

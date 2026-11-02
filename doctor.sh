@@ -103,6 +103,9 @@ DEBIAN_VERSION='^[0-9][A-Za-z0-9.+~:-]*$'
 #   SERVICE_GROUPS   "Name|description"
 #   SERVICE_ROWS     "Group|unit|probe"    the unit keeps its suffix: sshd.service
 #
+#   The group says what the unit is: a .service is a daemon, a .socket is a
+#   socket, a .path is a file trigger, a .timer is scheduled work, and a
+#   container row uses the docker probe.
 #   A group with no rows is allowed and prints msg_no_service under its name,
 #   so the section reads as a declaration.
 #   probe: one of SERVICE_PROBES. A socket or a timer needs its companion
@@ -115,6 +118,7 @@ SERVICE_SECTION='Services|4|2'
 SERVICE_GROUPS=(
   "Daemons|background processes"
   "Sockets|on-demand activation"
+  "Paths|file-based activation"
   "Timers|scheduled jobs"
   "Containers|container instances"
 )

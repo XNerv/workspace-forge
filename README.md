@@ -161,6 +161,8 @@ Services
   |   \-- docker  docker-daemon  running
   +-- Sockets  on-demand activation
   |   \-- no unit declared
+  +-- Paths  file-based activation
+  |   \-- no unit declared
   +-- Timers  scheduled jobs
   |   \-- no unit declared
   \-- Containers  container instances

@@ -58,18 +58,20 @@ fi
 
 # A copy of the doctor with one row per fixture, all on the real systemd probe.
 copy_with_fixtures() {
+  # Each unit goes to the group that names what it is: a .service is a daemon,
+  # a .socket is a socket, a .path is a file trigger, a .timer is scheduled work.
   awk '
     { print }
     /^SERVICE_ROWS=\($/ {
       print "  \"Daemons|fixture-running.service|systemd\""
       print "  \"Daemons|fixture-oneshot.service|systemd\""
-      print "  \"Daemons|fixture-socket.socket|systemd\""
-      print "  \"Daemons|fixture-timer.timer|systemd\""
       print "  \"Daemons|fixture-stopped.service|systemd\""
       print "  \"Daemons|fixture-failed.service|systemd\""
-      print "  \"Daemons|fixture-path.path|systemd\""
       print "  \"Daemons|fixture-absent.service|systemd\""
       print "  \"Daemons|fixture-user.service|systemd-user\""
+      print "  \"Sockets|fixture-socket.socket|systemd\""
+      print "  \"Paths|fixture-path.path|systemd\""
+      print "  \"Timers|fixture-timer.timer|systemd\""
     }
   ' "$doctor" > "$work/doctor.sh"
   chmod +x "$work/doctor.sh"
@@ -172,6 +174,21 @@ save_output systemd
 printf '%s\n' "$out" | sed -n '/^Services/,$p' | sed 's/^/  | /'
 
 fixture_state() { grep -E " $1 " <<<"$out" | awk '{ print $NF; exit }'; }
+
+# Which group a fixture is drawn under, read from the report: the group header
+# is the line that opens a tree branch, and it is three fields above the row.
+group_of() { # UNIT
+  awk -v unit="$1" '
+    /^ *[+\\]-- [A-Za-z]+  / { group = $2 }
+    index($0, unit) { print group; exit }
+  ' <<<"$out"
+}
+
+check 'a service sits under Daemons' test "$(group_of fixture-running.service)" = Daemons
+check 'the user unit sits under Daemons' test "$(group_of fixture-user.service)" = Daemons
+check 'the socket sits under Sockets' test "$(group_of fixture-socket.socket)" = Sockets
+check 'the path sits under Paths' test "$(group_of fixture-path.path)" = Paths
+check 'the timer sits under Timers' test "$(group_of fixture-timer.timer)" = Timers
 
 check 'a long-running service reports running' test "$(fixture_state fixture-running.service)" = "running"
 check 'a finished oneshot reports done' test "$(fixture_state fixture-oneshot.service)" = "done"

@@ -280,10 +280,17 @@ check 'a stale tool joins the install line' grep -q 'sudo apt-get install -y .*z
 # Then:  FORCE_COLOR colours and NO_COLOR wins over it
 printf '\n  --- colour precedence ---\n'
 
-forced=$(FORCE_COLOR=1 "$doctor" 2>&1 | grep -c $'\033' || true)
+# The documented command is ./doctor.sh, so a lost mode is a real failure and
+# the test states it here rather than letting it look like a colour problem.
+check 'doctor.sh is executable' test -x "$doctor"
+
+# bash runs the file, so the colour assertions test colour and nothing else; the
+# ambient environment must not decide the result either, since NO_COLOR wins
+# over FORCE_COLOR by design.
+forced=$(env -u NO_COLOR FORCE_COLOR=1 bash "$doctor" 2>&1 | grep -c $'\033' || true)
 check 'FORCE_COLOR emits escapes' test "$forced" -gt 0
 
-suppressed=$(FORCE_COLOR=1 NO_COLOR=1 "$doctor" 2>&1 | grep -c $'\033' || true)
+suppressed=$(env NO_COLOR=1 FORCE_COLOR=1 bash "$doctor" 2>&1 | grep -c $'\033' || true)
 check 'NO_COLOR wins over FORCE_COLOR' test "$suppressed" -eq 0
 
 summary

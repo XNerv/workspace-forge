@@ -234,7 +234,7 @@ check 'no line is wider than 100 columns' no_wide
 check 'no trailing whitespace' no_trailing
 
 set +e
-forced=$(cd "$work" && env PATH="$complete:/usr/bin:/bin" FORCE_COLOR=1 "$doctor" 2>&1)
+forced=$(cd "$work" && env -u NO_COLOR PATH="$complete:/usr/bin:/bin" FORCE_COLOR=1 "$doctor" 2>&1)
 set -e
 printf '%s\n' "$forced" > "$outdir/forced-color.txt"
 if printf '%s' "$forced" | grep -q $'\033'; then

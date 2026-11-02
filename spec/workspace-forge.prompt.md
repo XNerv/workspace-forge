@@ -615,7 +615,8 @@ Implement:
 
 Try, in order:
 
-1. `python3`, if available.
+1. `python3`, if available. Pass `--` before the path, and read the argument that follows the
+   separator: `sys.argv[2]`, never `sys.argv[1]`, which is the separator itself.
 2. `realpath`, if available.
 3. A safe manual fallback, without claiming symbolic-link resolution when it is not possible.
 
