@@ -1,0 +1,117 @@
+# Development recipes for workspace-forge itself.
+#
+# The generated workspace ships its own justfile: its four recipes only forward
+# arguments to scripts/. These recipes build and check the tool.
+
+set shell := ["bash", "-uc"]
+set positional-arguments := true
+
+# List the recipes.
+default:
+    @just --list
+
+# Run the test suite.
+test:
+    @bash tests/run.sh
+
+# Lint the Bash sources with ShellCheck.
+lint:
+    @command -v shellcheck > /dev/null 2>&1 || { printf 'shellcheck is required: install it before linting\n' >&2; exit 1; }
+    @shellcheck forge lib/*.sh scripts/*.sh tests/*.sh
+
+# Build the standalone bundle under dist/.
+build:
+    @bash scripts/build-standalone.sh
+
+# Install a symbolic link at ~/.local/bin/forge.
+install:
+    #!/usr/bin/env bash
+    set -Eeuo pipefail
+
+    repo=$(pwd -P)
+    source_path=$repo/forge
+    if [[ ! -x $source_path ]]; then
+        printf 'forge is not executable: %s\n' "$source_path" >&2
+        exit 1
+    fi
+
+    home=${HOME:?HOME must be set}
+    local_dir=$home/.local
+    bin_dir=$local_dir/bin
+    if [[ -L $local_dir ]]; then
+        printf 'refusing to install under a symbolic link: %s\n' "$local_dir" >&2
+        exit 1
+    fi
+    if [[ -L $bin_dir ]]; then
+        printf 'refusing to install under a symbolic link: %s\n' "$bin_dir" >&2
+        exit 1
+    fi
+    if [[ -e $bin_dir && ! -d $bin_dir ]]; then
+        printf 'not a directory: %s\n' "$bin_dir" >&2
+        exit 1
+    fi
+    mkdir -p -- "$bin_dir"
+
+    link=$bin_dir/forge
+    if [[ -L $link ]]; then
+        target=$(readlink -- "$link")
+        if [[ $target == "$source_path" ]]; then
+            printf 'already installed: %s\n' "$link"
+            exit 0
+        fi
+        printf 'refusing to replace a link owned by another program: %s\n' "$link" >&2
+        exit 1
+    fi
+    if [[ -e $link ]]; then
+        printf 'refusing to replace a regular file: %s\n' "$link" >&2
+        exit 1
+    fi
+    ln -s -- "$source_path" "$link"
+    printf 'installed %s -> %s\n' "$link" "$source_path"
+    printf 'PATH was not changed; add %s to PATH yourself.\n' "$bin_dir"
+
+# Remove only the symbolic link this repository installed.
+uninstall:
+    #!/usr/bin/env bash
+    set -Eeuo pipefail
+
+    repo=$(pwd -P)
+    link=${HOME:?HOME must be set}/.local/bin/forge
+    if [[ ! -L $link ]]; then
+        printf 'no symbolic link to remove: %s\n' "$link" >&2
+        exit 1
+    fi
+    target=$(readlink -- "$link")
+    if [[ $target != "$repo/forge" ]]; then
+        printf 'refusing to remove a link that points elsewhere: %s\n' "$target" >&2
+        exit 1
+    fi
+    rm -- "$link"
+    printf 'removed %s\n' "$link"
+
+# Prepare the local semantic tag; the recipe never pushes or publishes.
+release:
+    #!/usr/bin/env bash
+    set -Eeuo pipefail
+
+    if ! git rev-parse --git-dir > /dev/null 2>&1; then
+        printf 'release needs a Git repository\n' >&2
+        exit 1
+    fi
+    version=$(sed -n 's/^FORGE_VERSION="\(.*\)"$/\1/p' forge)
+    if [[ -z $version ]]; then
+        printf 'cannot read FORGE_VERSION from forge\n' >&2
+        exit 1
+    fi
+    tag=v$version
+    if git rev-parse -q --verify "refs/tags/$tag" > /dev/null; then
+        printf 'tag already exists: %s\n' "$tag" >&2
+        exit 1
+    fi
+    if [[ -n $(git status --porcelain) ]]; then
+        printf 'working tree is not clean; commit the change before tagging\n' >&2
+        exit 1
+    fi
+    git tag -a "$tag" -m "workspace-forge $version"
+    printf 'created local tag %s\n' "$tag"
+    printf 'the tag was not pushed; remote operations need explicit authorization.\n'

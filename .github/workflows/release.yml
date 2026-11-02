@@ -1,0 +1,193 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+defaults:
+  run:
+    working-directory: generated
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test, lint and build the artifact
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Verify the Bash version
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash --version | head -n 1
+          if (( BASH_VERSINFO[0] < 4 )); then
+            printf 'Bash 4 or newer is required\n' >&2
+            exit 1
+          fi
+
+      - name: Install the required tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            shellcheck just
+          for tool in shellcheck just; do
+            if ! command -v "$tool" > /dev/null 2>&1; then
+              printf '%s is required but missing\n' "$tool" >&2
+              exit 1
+            fi
+          done
+
+      - name: Lint the Bash sources
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          shellcheck forge lib/*.sh scripts/*.sh tests/*.sh
+
+      - name: Run the test suite
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash tests/run.sh
+
+      - name: Validate the justfile
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          just --list
+
+      - name: Build and test the standalone artifact
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash scripts/build-standalone.sh
+
+          version=$(sed -n \
+            's/^FORGE_VERSION="\(.*\)"$/\1/p' forge)
+          if [[ -z $version ]]; then
+            printf 'cannot read FORGE_VERSION\n' >&2
+            exit 1
+          fi
+
+          tarball=dist/workspace-forge-${version}.tar.gz
+          checksum=${tarball}.sha256
+          if [[ ! -f $tarball || ! -f $checksum ]]; then
+            printf 'the build did not produce the artifact\n' >&2
+            exit 1
+          fi
+          ( cd dist && sha256sum -c "$(basename -- "$checksum")" )
+
+      - name: Upload the standalone artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: workspace-forge-standalone
+          path: |
+            generated/dist/workspace-forge-*.tar.gz
+            generated/dist/workspace-forge-*.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Publish the GitHub release
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate the tag and the declared version
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          tag=${GITHUB_REF_NAME}
+          if [[ ! $tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            printf 'invalid release tag: %s\n' "$tag" >&2
+            exit 1
+          fi
+
+          declared=$(sed -n 's/^FORGE_VERSION="\(.*\)"$/\1/p' forge)
+          if [[ -z $declared ]]; then
+            printf 'cannot read FORGE_VERSION from forge\n' >&2
+            exit 1
+          fi
+          if [[ $tag != "v$declared" ]]; then
+            printf 'tag %s does not match FORGE_VERSION %s\n' \
+              "$tag" "$declared" >&2
+            exit 1
+          fi
+
+      - name: Download the verified artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: workspace-forge-standalone
+          path: generated/dist
+
+      - name: Verify and smoke-test the downloaded artifact
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          version=$(sed -n 's/^FORGE_VERSION="\(.*\)"$/\1/p' forge)
+          tarball=dist/workspace-forge-${version}.tar.gz
+          checksum=${tarball}.sha256
+          if [[ ! -f $tarball || ! -f $checksum ]]; then
+            printf 'the downloaded artifact is incomplete\n' >&2
+            exit 1
+          fi
+          ( cd dist && sha256sum -c "$(basename -- "$checksum")" )
+
+          base=$(mktemp -d)
+          trap 'rm -rf -- "$base"' EXIT
+          tar -xzf "$tarball" -C "$base"
+          bundle=$base/workspace-forge-$version
+          if [[ ! -x $bundle/forge ]]; then
+            printf 'the tarball has no executable forge\n' >&2
+            exit 1
+          fi
+
+          version_output=$("$bundle/forge" --version)
+          if [[ $version_output != "forge $version" ]]; then
+            printf 'unexpected version output: %s\n' \
+              "$version_output" >&2
+            exit 1
+          fi
+          "$bundle/forge" --help > /dev/null
+          "$bundle/forge" --dry-run -p "$base/planned"
+          if [[ -e $base/planned ]]; then
+            printf 'the dry-run created a destination\n' >&2
+            exit 1
+          fi
+          "$bundle/forge" -p "$base/generated"
+          if [[ ! -d $base/generated/docs/adr ]]; then
+            printf 'the artifact did not generate the tree\n' >&2
+            exit 1
+          fi
+
+      - name: Publish the GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          version=$(sed -n 's/^FORGE_VERSION="\(.*\)"$/\1/p' forge)
+          gh release create "$GITHUB_REF_NAME" \
+            "dist/workspace-forge-${version}.tar.gz" \
+            "dist/workspace-forge-${version}.tar.gz.sha256" \
+            --verify-tag \
+            --title "workspace-forge ${version}" \
+            --generate-notes

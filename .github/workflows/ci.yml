@@ -1,0 +1,266 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+defaults:
+  run:
+    working-directory: generated
+
+permissions:
+  contents: read
+
+jobs:
+  generated-test:
+    name: The tool (generated/) on Ubuntu
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Verify the Bash version
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash --version | head -n 1
+          if (( BASH_VERSINFO[0] < 4 )); then
+            printf 'Bash 4 or newer is required\n' >&2
+            exit 1
+          fi
+
+      - name: Install the required tools
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            shellcheck just
+          for tool in shellcheck just; do
+            if ! command -v "$tool" > /dev/null 2>&1; then
+              printf '%s is required but missing\n' "$tool" >&2
+              exit 1
+            fi
+          done
+          shellcheck --version | sed -n '2p'
+          just --version
+
+      - name: Validate the justfile
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          just --list
+
+      - name: Lint the Bash sources
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          shellcheck forge lib/*.sh scripts/*.sh tests/*.sh
+
+      - name: Run the test suite
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash tests/run.sh
+
+      - name: Validate the template tree
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          categories=(root docs scripts data experiments projects \
+            infrastructure)
+          for category in "${categories[@]}"; do
+            if [[ ! -d templates/$category ]]; then
+              printf 'missing template category: %s\n' "$category" >&2
+              exit 1
+            fi
+          done
+
+          for script in backup setup clean doctor; do
+            if [[ ! -f templates/scripts/$script.sh ]]; then
+              printf 'missing template script: %s\n' "$script" >&2
+              exit 1
+            fi
+          done
+
+          for library in common args preflight files tree templates; do
+            if [[ ! -f lib/$library.sh ]]; then
+              printf 'missing library: %s\n' "$library" >&2
+              exit 1
+            fi
+          done
+
+          for file in README.md justfile .gitignore .editorconfig \
+            .env.example; do
+            if [[ ! -f templates/root/$file ]]; then
+              printf 'missing root template: %s\n' "$file" >&2
+              exit 1
+            fi
+          done
+
+          if [[ ! -f templates/README.md ]]; then
+            printf 'missing template documentation\n' >&2
+            exit 1
+          fi
+
+          template_link=$(find templates -type l -print -quit)
+          if [[ -n $template_link ]]; then
+            printf 'symbolic links are not allowed under templates/\n' >&2
+            exit 1
+          fi
+
+      - name: Validate generation in a temporary directory
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          base=$(mktemp -d)
+          trap 'rm -rf -- "$base"' EXIT
+          destination=$base/workspace
+
+          ./forge -p "$destination"
+
+          directories=(. docs docs/adr scripts data data/raw data/interim \
+            data/processed data/external experiments projects \
+            infrastructure)
+          for relative in "${directories[@]}"; do
+            if [[ ! -d $destination/$relative ]]; then
+              printf 'missing generated directory: %s\n' "$relative" >&2
+              exit 1
+            fi
+            if [[ ! -f $destination/$relative/README.md ]]; then
+              printf 'missing generated README: %s\n' "$relative" >&2
+              exit 1
+            fi
+          done
+
+          nested=(data/raw data/interim data/processed data/external \
+            experiments projects infrastructure)
+          for relative in "${nested[@]}"; do
+            if [[ ! -f $destination/$relative/.gitignore ]]; then
+              printf 'missing nested .gitignore: %s\n' "$relative" >&2
+              exit 1
+            fi
+          done
+
+          if [[ -e $destination/data/.gitignore ]]; then
+            printf 'data/.gitignore must not be generated\n' >&2
+            exit 1
+          fi
+
+          for script in backup setup clean doctor; do
+            path=$destination/scripts/$script.sh
+            if [[ ! -x $path ]]; then
+              printf 'script is not executable: %s\n' "$script" >&2
+              exit 1
+            fi
+          done
+
+          workspace_link=$(find "$destination" -type l -print -quit)
+          if [[ -n $workspace_link ]]; then
+            printf 'the workspace must not contain symbolic links\n' >&2
+            exit 1
+          fi
+
+          directory_count=$(find "$destination" -type d | wc -l)
+          if [[ $directory_count -ne 12 ]]; then
+            printf 'expected 12 directories, found %s\n' \
+              "$directory_count" >&2
+            exit 1
+          fi
+
+      - name: Verify that --dry-run writes nothing
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          base=$(mktemp -d)
+          trap 'rm -rf -- "$base"' EXIT
+          destination=$base/planned
+
+          ./forge --dry-run -p "$destination"
+
+          if [[ -e $destination ]]; then
+            printf '--dry-run created the destination\n' >&2
+            exit 1
+          fi
+          created=$(find "$base" -mindepth 1 -print -quit)
+          if [[ -n $created ]]; then
+            printf '--dry-run wrote inside the temporary directory\n' >&2
+            exit 1
+          fi
+
+      - name: Refuse an existing destination
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          base=$(mktemp -d)
+          trap 'rm -rf -- "$base"' EXIT
+          destination=$base/existing
+          mkdir -- "$destination"
+
+          status=0
+          ./forge -p "$destination" || status=$?
+          if [[ $status -ne 3 ]]; then
+            printf 'expected 3 for a real run, got %s\n' "$status" >&2
+            exit 1
+          fi
+
+          dry_status=0
+          ./forge --dry-run -p "$destination" || dry_status=$?
+          if [[ $dry_status -ne 3 ]]; then
+            printf 'expected 3 for a dry-run, got %s\n' "$dry_status" >&2
+            exit 1
+          fi
+
+          left_behind=$(find "$destination" -mindepth 1 -print -quit)
+          if [[ -n $left_behind ]]; then
+            printf 'the refusal wrote inside the destination\n' >&2
+            exit 1
+          fi
+
+  spec-audit:
+    name: Audit the specification wording
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Run the wording audit
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          # This job keeps the workflow's working directory (generated); the
+          # audit locates the repository from its own path.
+          bash ../spec/audit/run.sh
+
+  root-test:
+    name: This repository (root) on Ubuntu
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # The workflow default is generated/; this suite lives at the root and
+    # starts containers of its own, so it runs from there.
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Lint the host checks
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          shellcheck doctor.sh tests/*.sh spec/audit/*.sh
+
+      - name: Run the doctor test suite
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash tests/run.sh

@@ -1,0 +1,17 @@
+set shell := ["bash", "-uc"]
+set positional-arguments := true
+
+default:
+    @just --list
+
+backup *args:
+    @bash scripts/backup.sh "$@"
+
+setup *args:
+    @bash scripts/setup.sh "$@"
+
+clean *args:
+    @bash scripts/clean.sh "$@"
+
+doctor *args:
+    @bash scripts/doctor.sh "$@"

@@ -1,0 +1,11 @@
+# Line endings: everything is text and every file must keep LF.
+#
+# The tool is Bash and runs on Linux and WSL2; a CRLF checkout breaks the
+# shebang and ShellCheck. Pin LF here so `core.autocrlf` cannot change it.
+* text=auto eol=lf
+
+# Explicit, for readers and for tools that ignore the wildcard above.
+*.sh     text eol=lf
+*.md     text eol=lf
+*.yml    text eol=lf
+justfile text eol=lf

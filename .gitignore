@@ -1,0 +1,14 @@
+# Build output
+generated/dist/
+
+# OS and editor noise
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Local scratch
+*.tmp
+*.bak
+# Test artifacts
+tests/output/

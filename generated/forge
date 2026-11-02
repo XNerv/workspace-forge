@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+#
+# forge - create a standardized workspace in a destination that must not exist.
+#
+# This file holds the version and calls main. The six libraries under lib/
+# define every function: forge resolves its own path, loads the libraries in
+# order and runs the flow.
+
+set -Eeuo pipefail
+
+source_path=${BASH_SOURCE[0]}
+while [[ -L $source_path ]]; do
+  source_dir=$(cd -P -- "$(dirname -- "$source_path")" && pwd)
+  source_path=$(readlink "$source_path")
+  [[ $source_path == /* ]] || source_path="$source_dir/$source_path"
+done
+FORGE_HOME=$(cd -P -- "$(dirname -- "$source_path")" && pwd)
+export FORGE_HOME
+
+# Single source of the version. The build script, the release workflow and the
+# documentation read this line; never declare a second constant.
+FORGE_VERSION="0.1.0"
+export FORGE_VERSION
+
+# shellcheck source=lib/common.sh
+source "$FORGE_HOME/lib/common.sh"
+# shellcheck source=lib/args.sh
+source "$FORGE_HOME/lib/args.sh"
+# shellcheck source=lib/preflight.sh
+source "$FORGE_HOME/lib/preflight.sh"
+# shellcheck source=lib/files.sh
+source "$FORGE_HOME/lib/files.sh"
+# shellcheck source=lib/tree.sh
+source "$FORGE_HOME/lib/tree.sh"
+# shellcheck source=lib/templates.sh
+source "$FORGE_HOME/lib/templates.sh"
+
+# on_error reports what a failed run already created, then keeps the exit code.
+# The trap is removed first so reporting a failure cannot fail again.
+on_error() {
+  local status=$?
+  trap - ERR
+  if [[ ${FORGE_PARTIAL_REPORTED:-0} -eq 0 ]]; then
+    FORGE_PARTIAL_REPORTED=1
+    err "generation stopped before the summary"
+    err "directories created in this run: ${FORGE_CREATED_DIRS:-0} of ${FORGE_TOTAL_DIRS:-0}"
+    err "files created in this run: ${FORGE_CREATED_FILES:-0}"
+    err "destination: ${FORGE_TARGET:-unknown}"
+  fi
+  exit "$status"
+}
+
+main() {
+  trap on_error ERR
+  parse_args "$@"
+  preflight
+  if [[ $FORGE_DRY_RUN -eq 1 ]]; then
+    info "dry run: no directory and no file is created"
+  fi
+  create_tree
+  copy_templates
+  make_executables
+  trap - ERR
+  print_summary
+}
+
+# Run main only when forge is executed. Sourcing forge from a test defines the
+# functions and starts nothing.
+if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
+  main "$@"
+fi

@@ -1,0 +1,6 @@
+# ShellCheck reads this file when it lints this repository.
+shell=bash
+# The libraries are sourced through a path that forge computes at run time, so
+# ShellCheck cannot follow them. SC1090 and SC1091 are disabled for that reason
+# and for no other.
+disable=SC1090,SC1091

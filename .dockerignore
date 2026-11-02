@@ -1,0 +1,9 @@
+# Read from the build context root, which is why it lives here and not
+# beside tests/Dockerfile.
+# What the image never needs: VCS data, CI templates and run output.
+.git
+.github
+generated/dist
+tests/output
+*.tmp
+*.bak
